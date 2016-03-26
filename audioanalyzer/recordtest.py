@@ -1,20 +1,14 @@
+#!/usr/bin/env python
+
 import pyaudio, wave
 
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
-import scipy.fftpack as fftpack
-
 import numpy as np
 
 
-def note(freq, len=1, rate=44100, amp=1):
-    t = np.linspace(0, len, len * rate)
-    data = np.sin(2 * np.pi * freq * t) * amp
-    return data.astype(np.int16)
-
-
-def audioRecord(chunk=8192, format=pyaudio.paInt16, channels=1, rate=44100, record_seconds=1):
+def audioRecord(chunk=8192, format=pyaudio.paInt16, channels=1, rate=44100, record_seconds=1,cutframes=100):
     # Init recorder
     p = pyaudio.PyAudio()
     stream = p.open(
@@ -24,9 +18,9 @@ def audioRecord(chunk=8192, format=pyaudio.paInt16, channels=1, rate=44100, reco
 
     # Get sound datas
     frames = []
-    for i in range(0, int(RATE / BUFFERSIZE * RECORD_SECONDS)):
-        if i % (RATE / BUFFERSIZE) == 0:
-            print (i / (RATE / BUFFERSIZE)) + 1
+    for i in range(0, int(rate / BUFFERSIZE * RECORD_SECONDS)):
+        if i % (rate / BUFFERSIZE) == 0:
+            print "%s seconds" % int((i / (rate / BUFFERSIZE)) + 1)
         data = stream.read(BUFFERSIZE)
         frames.append(data)
     frames = ''.join(frames)
@@ -36,15 +30,16 @@ def audioRecord(chunk=8192, format=pyaudio.paInt16, channels=1, rate=44100, reco
     stream.close()
     p.terminate()
 
-    return frames
+    return frames[CUTFRAMES:]
 
 
-def saveWav(snddata, filename):
+def saveWav(frames, channels, rate, filename):
     wavfile = wave.open(filename, 'wb')
-    wavfile.setnchannels(CHANNELS)
-    wavfile.setsampwidth(pyaudio.PyAudio().get_sample_size(FORMAT))
-    wavfile.setframerate(RATE)
-    wavfile.writeframes(snddata)
+    wavfile.setnchannels(channels)
+    wavfile.setsampwidth(2)
+    wavfile.setframerate(rate)
+    wavfile.setnframes(len(frames))
+    wavfile.writeframes(frames)
     wavfile.close()
 
 def loadWav(filename):
@@ -52,72 +47,88 @@ def loadWav(filename):
     (nchannels, sampwidth, framerate, nframes, comptype, compname) = wav.getparams ()
     frames = wav.readframes(nframes * nchannels)
 
-    return frames
+    return {'frames': frames, 'rate': framerate}
+
+
 
 ########################################
 # Main
 ########################################
 
 
+# Audio
 BUFFERSIZE = 8192
 FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 44100
-RECORD_SECONDS = 2
+RECORD_SECONDS = 10
 CUTFRAMES = 100
+
+# Misc
+MAXSHOWPECTRUM=15000
 
 # Record Audio
 snddata = audioRecord(
         chunk=BUFFERSIZE, format=FORMAT,channels=CHANNELS,
-        rate=RATE, record_seconds=RECORD_SECONDS
+        rate=RATE, record_seconds=RECORD_SECONDS,cutframes=CUTFRAMES
 )
-
-# Create tone
-# snddata = note(freq=440, len=RECORD_SECONDS*2, amp=32728, rate=RATE)
+saveWav(snddata, CHANNELS, RATE, 'audio.wav')
+rate = RATE
 
 # Load sound
-#snddata = loadWav('440.wav')
+# sndinfo = loadWav('440.wav')
+# snddata = sndinfo['frames']
+# rate = sndinfo['rate']
 
 
 # Amplitude
-amplitude = np.fromstring(snddata[CUTFRAMES:], np.int16)/32768.0
-absamplitude = np.abs(amplitude)
+snddata = snddata[:(len(snddata)/int(rate))*rate]
+amplitude = np.fromstring(snddata, np.int16)/32768.0
+totaltime = len(amplitude)/float(rate)
+t = np.linspace(0, totaltime, len(amplitude))
 
-# Spectrum
-fftn = 8192
-ffty = np.abs(np.fft.fft(amplitude,n=fftn))
-fftx = np.fft.fftfreq(len(ffty), 1/float(RATE))
 
-# Specgram
-S, freqs, bins, im = plt.specgram(amplitude, NFFT=1024, noverlap=512, Fs=RATE)
-
-gs = gridspec.GridSpec(12, 12)
+# plot parameters
+gs = gridspec.GridSpec(12, 13)
+axamplitude = plt.subplot(gs[0:3, :-4])
+axspecgram = plt.subplot(gs[4:, :-4], sharex=axamplitude)
+axspectrum = plt.subplot(gs[4:, 9:12],sharey=axspecgram)
+axcolorbar = plt.subplot(gs[4:, 12])
+cmap = plt.get_cmap('viridis')
+cmap.set_under(color='k', alpha=None)
 
 # Amplitude
-ax1 = plt.subplot(gs[0:4,6:])
-ax1.set_title('Timeline')
-ax1.set_ylabel('Amplitude')
-ax1.set_xlabel('Time (s)')
-ax1.grid(True)
-ax1.plot(amplitude, color='black')
+axamplitude.set_title('Timeline')
+axamplitude.set_ylabel('Amplitude')
+axamplitude.set_xlabel('Time (s)')
+axamplitude.grid(True)
 
-# Spectrum
-ax2 = plt.subplot(gs[6:,6:])
-ax2.set_title('Spectrum')
-ax2.set_ylabel('A')
-ax2.set_xlabel('F (Hz)')
-ax2.grid(True)
-ax2.plot(fftx, ffty,c='k')
-ax2.axis([0,RATE/2.0,0,ffty.max()])
+axamplitude.plot(t, amplitude, color='#482576')
+axamplitude.axis([0, totaltime, -np.max(np.abs(amplitude)), np.max(np.abs(amplitude))])
+
+# # Spectrum
+fftn = 4096
+fftamplitude = 20*np.log10(np.abs(np.fft.fft(amplitude,n=fftn))/np.max(amplitude))
+fftfreqs = np.fft.fftfreq(len(fftamplitude), 1/float(rate))
+
+axspectrum.set_title('Spectrum')
+axspectrum.set_ylabel('')
+axspectrum.set_xlabel('dB')
+axspectrum.grid(True)
+
+axspectrum.fill_between(fftamplitude,0,fftfreqs, color='#482576')
+axspectrum.axis([0,np.max(fftamplitude),0,MAXSHOWPECTRUM])
+
 
 # Specgram
-ax3 = plt.subplot(gs[:,0:5])
-ax3.set_title('Specgram')
-ax3.set_ylabel('F (Hz)')
-ax3.set_xlabel('Time (s)')
-ax3.grid(True)
-ax3.specgram(amplitude, NFFT=fftn, noverlap=512, Fs=RATE,cmap=plt.cm.gray_r)
+axspecgram.set_title('Specgram')
+axspecgram.set_ylabel('F (Hz)')
+axspecgram.set_xlabel('Time (s)')
+axspecgram.grid(True)
 
+Pxx, freqs, bins, im = axspecgram.specgram(amplitude, Fs=rate, NFFT=64, noverlap=32, cmap=cmap, vmin=-150, scale_by_freq=True)
+plt.colorbar(im, cax=axcolorbar, label='Intensity in dB')
+axspecgram.axis([0, totaltime, 0, MAXSHOWPECTRUM])
 
 plt.savefig('graph.png', dpi=300)
 plt.show()
