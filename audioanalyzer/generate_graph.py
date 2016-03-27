@@ -7,40 +7,9 @@ import matplotlib.gridspec as gridspec
 
 import numpy as np
 
+# parameters
+MAXSHOWPECTRUM=15000
 
-def audioRecord(chunk=8192, format=pyaudio.paInt16, channels=1, rate=44100, record_seconds=1,cutframes=100):
-    # Init recorder
-    p = pyaudio.PyAudio()
-    stream = p.open(
-            format=FORMAT, channels=CHANNELS, rate=RATE, input=True,
-            input_device_index=0, frames_per_buffer=BUFFERSIZE
-    )
-
-    # Get sound datas
-    frames = []
-    for i in range(0, int(rate / BUFFERSIZE * RECORD_SECONDS)):
-        if i % (rate / BUFFERSIZE) == 0:
-            print "%s seconds" % int((i / (rate / BUFFERSIZE)) + 1)
-        data = stream.read(BUFFERSIZE)
-        frames.append(data)
-    frames = ''.join(frames)
-
-    # Stop recorder
-    stream.stop_stream()
-    stream.close()
-    p.terminate()
-
-    return frames[CUTFRAMES:]
-
-
-def saveWav(frames, channels, rate, filename):
-    wavfile = wave.open(filename, 'wb')
-    wavfile.setnchannels(channels)
-    wavfile.setsampwidth(2)
-    wavfile.setframerate(rate)
-    wavfile.setnframes(len(frames))
-    wavfile.writeframes(frames)
-    wavfile.close()
 
 def loadWav(filename):
     wav = wave.open(filename, "r")
@@ -50,35 +19,10 @@ def loadWav(filename):
     return {'frames': frames, 'rate': framerate}
 
 
-
-########################################
-# Main
-########################################
-
-
-# Audio
-BUFFERSIZE = 8192
-FORMAT = pyaudio.paInt16
-CHANNELS = 1
-RATE = 44100
-RECORD_SECONDS = 10
-CUTFRAMES = 100
-
-# Misc
-MAXSHOWPECTRUM=15000
-
-# Record Audio
-snddata = audioRecord(
-        chunk=BUFFERSIZE, format=FORMAT,channels=CHANNELS,
-        rate=RATE, record_seconds=RECORD_SECONDS,cutframes=CUTFRAMES
-)
-saveWav(snddata, CHANNELS, RATE, 'audio.wav')
-rate = RATE
-
 # Load sound
-# sndinfo = loadWav('440.wav')
-# snddata = sndinfo['frames']
-# rate = sndinfo['rate']
+sndinfo = loadWav('audio.wav')
+snddata = sndinfo['frames']
+rate = sndinfo['rate']
 
 
 # Amplitude
